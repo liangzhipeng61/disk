@@ -1,0 +1,149 @@
+操作系统初始化： 
+1.CRT/xshell远程连接   （SSH协议/程序）
+2.SElinux操作系统安全机制关闭、firewalld防火墙关闭  
+3.安装常用软件及修改主机名    vim lrzsz net-tools
+4.优化ssh配置文件以提高CRT远程连接速度
+5.操作系统本地时间校正及保存时间计时到bios系统
+6."关机做快照。" 十分重要！！！
+
+
+新系统配置步骤：
+两张网卡，第一张网卡用于内网连接，第二张网卡用于连接外网。
+1.配置CRT远程连接
+	操作系统与真实机通信（网卡桥接，如都是vmnet1，IP在一个网段）
+# ip addr	查看IP地址，由于是新安装的操作系统，所以没有IP地址
+	ens1*	表示网卡编号
+
+打开网卡配置文件：
+# vi /etc/sysconfig/network-scripts/ifcfg-ens160    输入a 
+
+BOOTPROTO=static	静态获取IP地址	/dhcp
+ONBOOT=yes		启用该网卡
+新增以下内容：
+IPADDR=192.168.1.100	IP地址
+NETMASK=255.255.255.0	子网掩码
+#GATEWAY=192.168.1.1	网关
+
+当把所有内容写完后，按一下"Esc" ，再按“  shift   加  ： ”  这是在屏幕的左下方会出现一个 “：” ，再输入wq！  回车，即可保存修改并退出。
+不保存退出：q！
+
+第二张网卡配置连接外网。
+
+
+重启电脑：
+# reboot
+
+
+2.SElinux操作系统安全机制关闭、firewalld防火墙关闭
+SElinux关闭:
+# setenforce 0		//临时关闭
+永久关闭：
+# sed -i '/SELINUX/s/enforcing/disabled/' /etc/selinux/config
+保存退出
+
+关闭firewalld防火墙：
+# systemctl stop firewalld
+关闭firewalld防火墙的开机自启：
+# systemctl disable firewalld		//永久关闭
+
+
+
+# dnf clean all		//清除缓存
+# dnf makecache		//重新加载dnf源
+
+3.安装常用软件及修改主机名
+# dnf install -y vim lrzsz net-tools network-scripts
+修改主机名（看需求）：
+# vim /etc/hostname
+pillar
+修改hosts主机解析文件，添加解析当前主机名称条目：
+# vim /etc/hosts
+127.0.0.1 pillar			//为主机名
+
+
+4.优化ssh配置文件以提高CRT远程连接速度
+修改ssh主配置文件：
+# vim /etc/ssh/sshd_config 
+分别在80行和113行修改值为"no"
+GSSAPIAuthentication no				//是否允许使用基于 GSSAPI 的用户认证。默认值为"yes"。服务器端启用了GSSAPI。登陆的时候客户端需要对服务器端的IP地址进行反解析，如果服务器的IP地址没有配置PTR记录，那么就容易在这里卡住。
+UseDNS no
+
+重启ssh服务：
+# systemctl restart sshd
+
+5.操作系统本地时间校正及保存时间计时到bios系统
+修改时区为中国时区：
+# date
+Fri Sep 14 17:34:08 EDT 2018		//EDT为美国东部时区
+修改为中国时区:
+# rm -rf /etc/localtime 		//删除初始时间
+# ln -s /usr/share/zoneinfo/Asia/Shanghai /etc/localtime 	//将中国上海时间链接到系统时间
+# date
+Sat Sep 15 17:35:58 CST 2018		//CST为中国时区
+
+修改系统时间并将时间写入bios：
+# date -s 20180914
+# date -s 15:00:00
+# hwclock -w		//将当前date时间写入bios时间中，下次启动将读取bios时间
+# hwclock -r 		//查看bios时间
+
+
+
+
+
+6.关机做快照
+
+
+如果需要将阿里云的源增加，可采用以下方法：
+
+# cp /etc/yum.repos.d/openEuler.repo /etc/yum.repos.d/aliyun.repo 
+# sed -i "s#repo.openeuler.org#mirrors.aliyun.com/openeuler#g" /etc/yum.repos.d/aliyun.repo 
+
+
+
+拓展：  
+安装图形化界面DDE、UKUI，这里以DDE为例：
+dnf -y update
+dnf -y install dde
+systemctl set-default graphical.target
+reboot
+
+
+
+
+
+
+
+
+
+7.新添加网卡配置
+为openeuler服务器添加VMware新网卡后的网卡初始操作:
+A.先通过以下命令查看出现的新增加网卡的编号
+# ip addr		//查看电脑已识别的网卡和MAC地址
+B.查看新增网卡的编号及UUID号
+# nmcli con show 		//查看网卡UUID，可能不存在
+C.通过网卡编号加载该网卡并重启服务或电脑。：
+#  nmcli connection add type ethernet ifname ens224 con-name ens224		//ens224为ip addr看到的新增网卡
+# systemctl restart NetworkManager
+通过以上步骤新增网卡后将自动生成网卡配置文件，此时只需要根据需求修改IP地址即可。
+
+
+
+
+3.重设root用户登录密码：
+方法1：单用户模式：
+开机读秒时选择第一行按"e"
+在linux这一行末尾增加 init=/bin/sh，然后按ctrl+x、
+输入：mount -o remount,rw /
+输入：passwd root  		//输入新密码
+exit 
+reboot		//重启系统即可输入新密码登录
+
+方法2：
+通过光盘进入急救模式  
+输入：chroot /mnt/sysimage
+passwd root		//修改密码后重启即可
+#exit
+#reboot
+
+
